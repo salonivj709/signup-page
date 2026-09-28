@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const bcrypt = require("bcryptjs");
 
 dotenv.config();
 
@@ -95,6 +96,85 @@ app.post("/api/signup", async (req, res) => {
             message: "Server error"
         });
     }
+});
+
+// LOGIN API
+app.post("/api/login", async (req, res) => {
+
+    try {
+
+        // Get email and password from frontend
+        const { email, password } = req.body;
+
+
+        // Check whether fields are provided
+        if (!email || !password) {
+
+            return res.status(400).json({
+                success: false,
+                message: "Email and password are required"
+            });
+
+        }
+
+
+        // Find user using email
+        const user = await User.findOne({ email });
+
+
+        // User not found
+        if (!user) {
+
+            return res.status(404).json({
+                success: false,
+                message: "User not found"
+            });
+
+        }
+
+
+        // Compare entered password
+        // with hashed password stored in MongoDB
+        const passwordMatch = await bcrypt.compare(
+            password,
+            user.password
+        );
+
+
+        // Password is wrong
+        if (!passwordMatch) {
+
+            return res.status(401).json({
+                success: false,
+                message: "User not authorized"
+            });
+
+        }
+
+
+        // Login successful
+        return res.status(200).json({
+            success: true,
+            message: "User login successful",
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email
+            }
+        });
+
+
+    } catch (error) {
+
+        console.log(error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Server error"
+        });
+
+    }
+
 });
 
 
