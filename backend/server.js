@@ -1,113 +1,144 @@
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const bcrypt = require("bcryptjs");
+
+const db = require("./db");
 
 dotenv.config();
 
 const app = express();
 
+
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Import User model
-const User = require("./models/User");
-
-// MongoDB connection
-mongoose
-    .connect(process.env.MONGO_URI)
-    .then(() => {
-        console.log("MongoDB Connected");
-    })
-    .catch((error) => {
-        console.log("MongoDB Connection Error:", error);
-    });
-
 
 // Test API
 app.get("/", (req, res) => {
+
     res.json({
-        message: "Signup Backend API is running"
+        message: "Signup and Login API is running"
     });
+
 });
 
 
-// Signup API
+// =========================
+// SIGNUP API
+// =========================
+
 app.post("/api/signup", async (req, res) => {
 
     try {
 
+        // Get data from frontend
         const { name, email, password } = req.body;
+
 
         // Check required fields
         if (!name || !email || !password) {
+
             return res.status(400).json({
                 success: false,
                 message: "All fields are required"
             });
+
         }
+
 
         // Check password length
         if (password.length < 6) {
+
             return res.status(400).json({
                 success: false,
                 message: "Password must be at least 6 characters"
             });
+
         }
 
-        // Check existing user
-        const existingUser = await User.findOne({ email });
 
-        if (existingUser) {
+        // Check whether user already exists
+        const [existingUser] = await db.execute(
+            "SELECT * FROM users WHERE email = ?",
+            [email]
+        );
+
+
+        if (existingUser.length > 0) {
+
             return res.status(400).json({
                 success: false,
-                message: "Email already registered"
+                message: "User already exists"
             });
+
         }
 
-        // Create new user
-        const user = new User({
-            name,
-            email,
-            password
-        });
 
-        // Save user
-        await user.save();
+        // Hash password
+        const hashedPassword = await bcrypt.hash(
+            password,
+            10
+        );
 
-        res.status(201).json({
+
+        // Insert user into MySQL
+        const [result] = await db.execute(
+            `INSERT INTO users 
+            (name, email, password)
+            VALUES (?, ?, ?)`,
+            [
+                name,
+                email,
+                hashedPassword
+            ]
+        );
+
+
+        // Successful response
+        return res.status(201).json({
+
             success: true,
+
             message: "Signup successful",
+
             user: {
-                id: user._id,
-                name: user.name,
-                email: user.email
+                id: result.insertId,
+                name: name,
+                email: email
             }
+
         });
+
 
     } catch (error) {
 
-        console.log(error);
+        console.log("Signup Error:", error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: "Server error"
         });
+
     }
+
 });
 
+
+// =========================
 // LOGIN API
+// =========================
+
 app.post("/api/login", async (req, res) => {
 
     try {
 
-        // Get email and password from frontend
+        // Get email and password
         const { email, password } = req.body;
 
 
-        // Check whether fields are provided
+        // Check fields
         if (!email || !password) {
 
             return res.status(400).json({
@@ -118,12 +149,15 @@ app.post("/api/login", async (req, res) => {
         }
 
 
-        // Find user using email
-        const user = await User.findOne({ email });
+        // Find user by email
+        const [users] = await db.execute(
+            "SELECT * FROM users WHERE email = ?",
+            [email]
+        );
 
 
-        // User not found
-        if (!user) {
+        // User doesn't exist
+        if (users.length === 0) {
 
             return res.status(404).json({
                 success: false,
@@ -133,15 +167,18 @@ app.post("/api/login", async (req, res) => {
         }
 
 
-        // Compare entered password
-        // with hashed password stored in MongoDB
+        // Get first user
+        const user = users[0];
+
+
+        // Compare password
         const passwordMatch = await bcrypt.compare(
             password,
             user.password
         );
 
 
-        // Password is wrong
+        // Password incorrect
         if (!passwordMatch) {
 
             return res.status(401).json({
@@ -154,19 +191,23 @@ app.post("/api/login", async (req, res) => {
 
         // Login successful
         return res.status(200).json({
+
             success: true,
+
             message: "User login successful",
+
             user: {
-                id: user._id,
+                id: user.id,
                 name: user.name,
                 email: user.email
             }
+
         });
 
 
     } catch (error) {
 
-        console.log(error);
+        console.log("Login Error:", error);
 
         return res.status(500).json({
             success: false,
@@ -178,8 +219,16 @@ app.post("/api/login", async (req, res) => {
 });
 
 
+// =========================
+// START SERVER
+// =========================
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+
+    console.log(
+        `Server running on http://localhost:${PORT}`
+    );
+
 });
